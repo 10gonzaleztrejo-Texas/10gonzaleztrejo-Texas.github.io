@@ -678,7 +678,7 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
     filtro:'', filtroResultado:'Todos', filtroFecha:'Todas', filtroTurno:'Todos', filtroDesde:'', filtroHasta:'',
     editReg:null, editErr:'',
     trackVista:'lista', trackRollo:null, trackFiltro:'', trackZona:'Todas', trackErr:'',
-    trackSeleccion:[], trackModoSel:false, trackMedio:'',
+    trackSeleccion:[], trackModoSel:false, trackMedio:'', trackFinal:false,
     reporteFiltro:'Todos',
     rollosMaster:{}, catalogs:null, variacionesCat:null, registros:[], tracking:{}, auditoria:[]
   };
@@ -1069,6 +1069,19 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
       '</div>';
   }
 
+  /* Interruptor "es su destino final", al registrar un movimiento.
+     La zona de contingencia nunca puede ser destino final: de ahí deben salir. */
+  function chipsDestinoFinal(){
+    var utiles = zonas().filter(function(z){ return z!==ZONA_ORIGEN; });
+    if(!utiles.length) return '';
+    return '<div class="ra-meta" style="margin:12px 0 8px;">¿Ese es su destino final?</div>' +
+      '<div class="ra-zchips">' +
+        '<button class="ra-zchip'+(S.trackFinal?'':' on')+'" data-final-sw="0">No, sigue en tránsito</button>' +
+        '<button class="ra-zchip'+(S.trackFinal?' on':'')+'" data-final-sw="1">Sí, es su destino final</button>' +
+      '</div>' +
+      (S.trackFinal ? '<div class="ra-meta" style="margin-top:6px;color:var(--conforme);">Quedará marcado como destino final y dejará de aparecer en las alertas.</div>' : '');
+  }
+
   function rolloExistenteCard(t, previos){
     var ultimo = S.registros.filter(function(r){ return r.rolloId===t.rolloId; })[0];
     var cls = ultimo ? (ultimo.resultado==='Conforme'?'conforme':ultimo.resultado==='Defecto'?'defecto':'scrap') : '';
@@ -1099,7 +1112,8 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
           '<div class="ra-label">REGISTRAR MOVIMIENTO</div>' +
           (medios().length ? '<div class="ra-meta" style="margin-bottom:8px;">Medio de transporte</div><div class="ra-zchips" style="margin-bottom:12px;">'+chipsMedio+'</div>' : '') +
           '<input class="ra-input" id="mover-nota-id" placeholder="Nota (opcional)" autocomplete="off">' +
-          '<div class="ra-meta" style="margin-bottom:8px;">Enviar a</div>' +
+          chipsDestinoFinal() +
+          '<div class="ra-meta" style="margin:12px 0 8px;">Enviar a</div>' +
           '<div class="ra-grid">'+destinos+'</div>' +
         '</div>' +
       '</div>';
@@ -1415,7 +1429,8 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
                 medios().map(function(m){ return '<button class="ra-zchip'+(S.trackMedio===m?' on':'')+'" data-medio="'+escAttr(m)+'">'+escHtml(m)+'</button>'; }).join('') +
                 '</div>' : '') +
               '<input class="ra-input" id="mover-nota-lote" placeholder="Nota (opcional)" autocomplete="off">' +
-              '<label class="ra-label">MOVER TODOS A</label><div class="ra-grid">'+zonasDestino+'</div>' +
+              chipsDestinoFinal() +
+              '<label class="ra-label" style="margin-top:12px;">MOVER TODOS A</label><div class="ra-grid">'+zonasDestino+'</div>' +
               '<label class="ra-label" style="margin-top:14px;">O SIN MOVERLOS</label>' +
               '<button class="ra-btn ra-btn-conforme ra-btn-block ra-btn-sm" id="btn-final-lote" style="margin-bottom:6px;">Marcar como destino final</button>' +
               '<button class="ra-link" id="btn-quitar-final-lote">Quitar la marca de destino final</button>'
@@ -1453,17 +1468,26 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
       return '<button class="ra-zchip'+(S.trackMedio===m?' on':'')+'" data-medio="'+escAttr(m)+'">'+escHtml(m)+'</button>';
     }).join('');
 
-    var cardFinal = t.finalizado
-      ? '<div class="ra-card" style="border-left:3px solid var(--conforme);">' +
+    var cardFinal;
+    if(t.finalizado){
+      cardFinal = '<div class="ra-card" style="border-left:3px solid var(--conforme);">' +
           '<div class="ra-label" style="color:var(--conforme);">DESTINO FINAL</div>' +
           '<div class="ra-h2" style="margin-bottom:10px;">'+escHtml(textoFinal(t))+'. Este rollo ya no aparece en las alertas.</div>' +
           '<button class="ra-link" id="btn-quitar-final">Quitar la marca de destino final</button>' +
-        '</div>'
-      : '<div class="ra-card">' +
+        '</div>';
+    } else if(t.zona===ZONA_ORIGEN){
+      /* En contingencia no se puede marcar destino final: el objetivo es sacarlo de ahí */
+      cardFinal = '<div class="ra-card">' +
+          '<div class="ra-h1" style="font-size:17px;">Destino final</div>' +
+          '<div class="ra-h2" style="margin-bottom:0;">'+escHtml(ZONA_ORIGEN)+' no puede ser destino final: todos los rollos nacen ahí y la idea es que salgan. Muévelo a otra zona y ahí podrás marcarlo.</div>' +
+        '</div>';
+    } else {
+      cardFinal = '<div class="ra-card">' +
           '<div class="ra-h1" style="font-size:17px;">¿Ya llegó a su destino final?</div>' +
           '<div class="ra-h2">Márcalo y dejará de contar para la alerta de rollos sin movimiento. Si después se vuelve a mover, la marca se quita sola.</div>' +
           '<button class="ra-btn ra-btn-conforme ra-btn-block" id="btn-marcar-final" style="margin-bottom:0;">Marcar como destino final</button>' +
         '</div>';
+    }
 
     return '<div class="ra-topbar"><button class="ra-back" id="btn-track-back">‹ Todos los rollos</button></div>' +
       '<div class="ra-card">' +
@@ -1482,7 +1506,8 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
           : '<div class="ra-note">No hay medios de transporte dados de alta. El administrador puede agregarlos en Ajustes.</div>') +
         '<label class="ra-label">NOTA (OPCIONAL)</label>' +
         '<input class="ra-input" id="mover-nota" placeholder="Ej. traslado programado" autocomplete="off">' +
-        '<label class="ra-label">ENVIAR A</label>' +
+        chipsDestinoFinal() +
+        '<label class="ra-label" style="margin-top:12px;">ENVIAR A</label>' +
         '<div class="ra-grid">'+opciones+'</div>' +
       '</div>';
   }
@@ -1507,39 +1532,58 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
     return Object.assign(camposTracking(t), {movimientos:arrayUnion(mov)});
   }
 
-  function moverRollo(rolloIdVal, zona, nota, medio){
+  /* Marca los campos de destino final sobre un movimiento ya aplicado */
+  function marcarFinalEnMovimiento(t, datos, now){
+    t.finalizado=true; t.finalizadoTs=now.getTime();
+    t.finalizadoPor=usuarioActual(); t.finalizadoFecha=fechaHoy(now);
+    datos.finalizado=true; datos.finalizadoTs=t.finalizadoTs;
+    datos.finalizadoPor=t.finalizadoPor; datos.finalizadoFecha=t.finalizadoFecha;
+    return datos;
+  }
+  function moverRollo(rolloIdVal, zona, nota, medio, esFinal){
     var t = S.tracking[rolloIdVal];
     if(!t) return;
-    var mov = nuevoMovimiento(zona, nota, medio, new Date());
-    escribir(setDoc(ref(COL.tracking, rolloIdVal), aplicarMovimiento(t, mov), {merge:true}));
-    auditar('movimiento', rolloIdVal, 'Movido a '+zona+(medio?' en '+medio:''), nota||'');
-    S.trackMedio='';
-    toast('Rollo movido a '+zona+(medio?' en '+medio:''));
+    var now = new Date();
+    var mov = nuevoMovimiento(zona, nota, medio, now);
+    var datos = aplicarMovimiento(t, mov);
+    var final = !!esFinal && zona!==ZONA_ORIGEN;
+    if(final) datos = marcarFinalEnMovimiento(t, datos, now);
+    escribir(setDoc(ref(COL.tracking, rolloIdVal), datos, {merge:true}));
+    auditar('movimiento', rolloIdVal, 'Movido a '+zona+(medio?' en '+medio:'')+(final?' · destino final':''), nota||'');
+    S.trackMedio=''; S.trackFinal=false;
+    toast('Rollo movido a '+zona+(final?' · destino final':(medio?' en '+medio:'')));
+    if(esFinal && zona===ZONA_ORIGEN) toast(ZONA_ORIGEN+' no puede ser destino final');
     render();
   }
 
-  function moverLote(ids, zona, nota, medio){
+  function moverLote(ids, zona, nota, medio, esFinal){
     var now=new Date(), ops=[];
+    var final = !!esFinal && zona!==ZONA_ORIGEN;
     ids.forEach(function(id){
       var t=S.tracking[id];
       if(!t || t.zona===zona) return;
       var mov = nuevoMovimiento(zona, nota||'Movimiento en lote', medio, now);
-      ops.push({ref:ref(COL.tracking,id), data:aplicarMovimiento(t, mov), merge:true});
+      var datos = aplicarMovimiento(t, mov);
+      if(final) datos = marcarFinalEnMovimiento(t, datos, now);
+      ops.push({ref:ref(COL.tracking,id), data:datos, merge:true});
     });
     if(!ops.length){ toast('Esos rollos ya están en '+zona); return; }
     escribir(commitEnLotes(ops));
-    auditar('movimiento','('+ops.length+' rollos)','Movimiento en lote a '+zona+(medio?' en '+medio:'')+': '+ids.join(', '), nota||'');
-    S.trackModoSel=false; S.trackSeleccion=[]; S.trackMedio='';
-    toast(ops.length+' rollo(s) movidos a '+zona);
+    auditar('movimiento','('+ops.length+' rollos)','Movimiento en lote a '+zona+(medio?' en '+medio:'')+(final?' · destino final':'')+': '+ids.join(', '), nota||'');
+    S.trackModoSel=false; S.trackSeleccion=[]; S.trackMedio=''; S.trackFinal=false;
+    toast(ops.length+' rollo(s) movidos a '+zona+(final?' · destino final':''));
+    if(esFinal && zona===ZONA_ORIGEN) toast(ZONA_ORIGEN+' no puede ser destino final');
     render();
   }
 
   /* Marca (o desmarca) rollos que ya llegaron a su destino final */
   function marcarFinal(ids, valor){
     var now=new Date(), ops=[], n=0;
+    var enOrigen=0;
     ids.forEach(function(id){
       var t=S.tracking[id];
       if(!t || !!t.finalizado===valor) return;
+      if(valor && t.zona===ZONA_ORIGEN){ enOrigen++; return; }
       t.finalizado=valor;
       t.finalizadoTs=valor?now.getTime():0;
       t.finalizadoPor=valor?usuarioActual():'';
@@ -1548,7 +1592,11 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
         finalizadoPor:t.finalizadoPor, finalizadoFecha:t.finalizadoFecha}});
       n++;
     });
-    if(!n){ toast(valor?'Esos rollos ya estaban marcados':'No había marcas que quitar'); return; }
+    if(!n){
+      toast(enOrigen ? ZONA_ORIGEN+' no puede ser destino final' : (valor?'Esos rollos ya estaban marcados':'No había marcas que quitar'));
+      return;
+    }
+    if(enOrigen) toast(enOrigen+' rollo(s) siguen en '+ZONA_ORIGEN+' y no se marcaron');
     escribir(commitEnLotes(ops));
     auditar('movimiento', n===1?ids[0]:'('+n+' rollos)',
       valor?'Marcado como destino final':'Se quitó la marca de destino final', '');
@@ -2122,12 +2170,54 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
   }
 
   /* ============ EXCEL ============ */
+  function loadExcelJS(){ return window.ExcelJS ? Promise.resolve() : loadScript("https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"); }
+
+  /* Miniatura de la foto para que el Excel no pese de más */
+  function miniFoto(dataURL, maxW){
+    return new Promise(function(resolve){
+      var img = new Image();
+      img.onload = function(){
+        var scale = Math.min(1, (maxW||360)/img.width);
+        var c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(img.width*scale));
+        c.height = Math.max(1, Math.round(img.height*scale));
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        resolve({data:c.toDataURL('image/jpeg', 0.6), w:c.width, h:c.height});
+      };
+      img.onerror = function(){ resolve(null); };
+      img.src = dataURL;
+    });
+  }
+
+  function hojaDeFilas(wb, nombre, filas){
+    var ws = wb.addWorksheet(nombre);
+    if(!filas.length) return ws;
+    var cols = Object.keys(filas[0]);
+    ws.columns = cols.map(function(k){ return {header:k, key:k, width:Math.max(12, Math.min(46, k.length+6))}; });
+    filas.forEach(function(f){ ws.addRow(f); });
+    ws.getRow(1).font = {bold:true};
+    ws.views = [{state:'frozen', ySplit:1}];
+    ws.autoFilter = {from:{row:1, column:1}, to:{row:1, column:cols.length}};
+    return ws;
+  }
+
   function exportExcel(){
     if(!S.registros.length){ toast('No hay registros que exportar'); return; }
+    var conFoto = [];
+    S.registros.forEach(function(r){
+      fotosDe(r).forEach(function(f, i){ conFoto.push({reg:r, foto:f, idx:i}); });
+    });
+    var incluirFotos = true;
+    if(conFoto.length > 250){
+      incluirFotos = confirm('Hay ' + conFoto.length + ' fotos. Incluirlas hace el archivo más pesado y tarda más.\n\nAceptar = con fotos · Cancelar = solo los datos');
+    }
     toast('Preparando archivo…');
-    loadSheetJS().then(function(){
-      var XLSX=window.XLSX;
-      var rows=S.registros.slice().reverse().map(function(r){
+    loadExcelJS().then(function(){
+      var wb = new window.ExcelJS.Workbook();
+      wb.creator = 'Inspección de rollos · Ternium';
+      wb.created = new Date();
+
+      var filas = S.registros.slice().reverse().map(function(r){
         var t = S.tracking[r.rolloId];
         return {
           'Fecha':r.fecha||'','Hora':r.hora||'','Turno':r.turno||'','ID Rollo':r.rolloId||'',
@@ -2140,18 +2230,20 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
           'Zona actual':t?t.zona:'', 'Movimientos':t?t.movimientos.length:0,
           'Destino final':t&&t.finalizado?'Sí':'No', 'Fecha destino final':t&&t.finalizado?(t.finalizadoFecha||''):'',
           'Modificaciones':(r.ediciones||[]).length,
-          'Fotos (cantidad)':(r.fotos||[]).length,'Comentario':r.comentario||''
+          'Fotos (cantidad)':fotosDe(r).length, 'Comentario':r.comentario||''
         };
       });
-      var ws=XLSX.utils.json_to_sheet(rows);
-      ws['!cols']=Object.keys(rows[0]).map(function(k){ return {wch:Math.max(12,k.length+2)}; });
+      hojaDeFilas(wb, 'REGISTRO', filas);
 
       var movs=[];
       Object.keys(S.tracking).forEach(function(k){
-        S.tracking[k].movimientos.forEach(function(m,i){
+        var t = S.tracking[k];
+        (t.movimientos||[]).forEach(function(m,i){
           movs.push({'ID Rollo':k,'Paso':i+1,'Zona':m.zona,'Medio de transporte':m.medio||'','Fecha':m.fecha,'Hora':m.hora,'Turno':m.turno||'','Usuario':m.usuario,'Nota':m.nota||''});
         });
       });
+      hojaDeFilas(wb, 'MOVIMIENTOS', movs);
+
       var ediciones=[];
       S.registros.forEach(function(r){
         (r.ediciones||[]).forEach(function(ed,i){
@@ -2159,22 +2251,78 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
             'Cambios':ed.cambios,'Motivo':ed.motivo});
         });
       });
-      var audit=S.auditoria.map(function(a){
-        return {'Fecha':a.fecha,'Hora':a.hora,'Turno':a.turno||'','Usuario':a.usuario,'Tipo':a.tipo,'ID Rollo':a.rolloId,'Detalle':a.detalle,'Motivo':a.motivo};
-      });
-      var cat=[]; FAMILIAS.forEach(function(f){ f.defectos.forEach(function(d){ cat.push({'Código':d.code,'Familia':f.name,'Defecto':d.name}); }); });
-      var grados=(S.catalogs.grados||[]).map(function(g){ return {'Grado Planchón':g.grado,'SGF':g.sgf||'','Familia':g.familia||''}; });
+      hojaDeFilas(wb, 'MODIFICACIONES', ediciones);
 
-      var wb=XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb,ws,'REGISTRO');
-      XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(movs.length?movs:[{'ID Rollo':''}]),'MOVIMIENTOS');
-      XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(ediciones.length?ediciones:[{'ID Rollo':''}]),'MODIFICACIONES');
-      XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(audit.length?audit:[{'Fecha':''}]),'AUDITORIA');
-      XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(cat),'CATALOGO_DEFECTOS');
-      XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(grados.length?grados:[{'Grado Planchón':'','SGF':'','Familia':''}]),'CATALOGO_GRADOS');
-      XLSX.writeFile(wb,'inspeccion_rollos_'+fechaHoy()+'.xlsx');
-      toast('Excel generado');
-    }).catch(function(){ toast('No se pudo cargar el generador de Excel'); });
+      hojaDeFilas(wb, 'AUDITORIA', S.auditoria.map(function(a){
+        return {'Fecha':a.fecha,'Hora':a.hora,'Turno':a.turno||'','Usuario':a.usuario,'Tipo':a.tipo,'ID Rollo':a.rolloId,'Detalle':a.detalle,'Motivo':a.motivo};
+      }));
+
+      var cat=[]; FAMILIAS.forEach(function(f){ f.defectos.forEach(function(d){ cat.push({'Código':d.code,'Familia':f.name,'Defecto':d.name}); }); });
+      hojaDeFilas(wb, 'CATALOGO_DEFECTOS', cat);
+      hojaDeFilas(wb, 'CATALOGO_GRADOS', (S.catalogs.grados||[]).map(function(g){
+        return {'Grado Planchón':g.grado,'SGF':g.sgf||'','Familia':g.familia||''};
+      }));
+
+      /* Hoja de fotos: cada evidencia se incrusta como imagen dentro de la celda */
+      function hojaFotos(){
+        if(!incluirFotos || !conFoto.length) return Promise.resolve();
+        var ws = wb.addWorksheet('FOTOS');
+        ws.columns = [
+          {header:'ID Rollo', width:20},{header:'Fecha', width:12},{header:'Hora', width:8},
+          {header:'Turno', width:7},{header:'Inspector', width:20},{header:'Resultado', width:26},
+          {header:'Defecto', width:26},{header:'Comentario', width:30},{header:'Foto', width:34}
+        ];
+        ws.getRow(1).font = {bold:true};
+        ws.views = [{state:'frozen', ySplit:1}];
+        var i = 0;
+        function siguiente(){
+          if(i >= conFoto.length) return Promise.resolve();
+          var item = conFoto[i], r = item.reg;
+          if(i % 10 === 0) toast('Agregando fotos… '+(i+1)+' de '+conFoto.length);
+          var p = item.foto.data ? Promise.resolve(item.foto.data) : cargarFoto(item.foto.id);
+          return p.then(function(src){
+            if(!src) return null;
+            return miniFoto(src, 360);
+          }).then(function(mini){
+            var fila = ws.addRow({});
+            var n = fila.number;
+            ws.getCell('A'+n).value = r.rolloId||'';
+            ws.getCell('B'+n).value = r.fecha||'';
+            ws.getCell('C'+n).value = r.hora||'';
+            ws.getCell('D'+n).value = r.turno||'';
+            ws.getCell('E'+n).value = r.inspector||'';
+            ws.getCell('F'+n).value = etqResLarga(r.resultado);
+            ws.getCell('G'+n).value = r.defecto ? (r.defectoCode+' '+r.defecto) : '';
+            ws.getCell('H'+n).value = r.comentario||'';
+            ws.getCell('H'+n).alignment = {wrapText:true, vertical:'top'};
+            if(mini){
+              var alto = 110;
+              var ancho = Math.round(alto * (mini.w/mini.h));
+              fila.height = alto * 0.78;
+              var imgId = wb.addImage({base64: mini.data.split(',')[1], extension:'jpeg'});
+              ws.addImage(imgId, {tl:{col:8.1, row:n-1+0.08}, ext:{width:ancho, height:alto}});
+            } else {
+              ws.getCell('I'+n).value = 'Foto no disponible sin conexión';
+            }
+            i++;
+            return siguiente();
+          });
+        }
+        return siguiente();
+      }
+
+      return hojaFotos().then(function(){
+        return wb.xlsx.writeBuffer();
+      }).then(function(buf){
+        var blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'inspeccion_rollos_'+fechaHoy()+'.xlsx';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+        toast('Excel generado'+(incluirFotos&&conFoto.length?' con '+conFoto.length+' foto(s)':''));
+      });
+    }).catch(function(e){ console.error(e); toast('No se pudo generar el Excel'); });
   }
 
   function exportAuditoria(){
@@ -2397,7 +2545,7 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
     on('#btn-home','click',function(){
       resetCaptureFlow();
       S.editReg=null; S.editErr='';
-      S.trackVista='lista'; S.trackRollo=null; S.trackModoSel=false; S.trackSeleccion=[]; S.trackMedio='';
+      S.trackVista='lista'; S.trackRollo=null; S.trackModoSel=false; S.trackSeleccion=[]; S.trackMedio=''; S.trackFinal=false;
       S.trackFiltro=''; S.trackZona='Todas';
       S.showChangePin=false; S.resetUid=null;
       document.querySelectorAll('.ra-video-modal,.ra-lightbox').forEach(function(n){
@@ -2653,9 +2801,9 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
         var n=S.trackSeleccion.length;
         if(!n) return;
         if(medios().length && !S.trackMedio){ toast('Selecciona el medio de transporte'); return; }
-        if(!confirm('¿Mover '+n+' rollo(s) a '+zona+(S.trackMedio?' en '+S.trackMedio:'')+'?')) return;
+        if(!confirm('¿Mover '+n+' rollo(s) a '+zona+(S.trackMedio?' en '+S.trackMedio:'')+(S.trackFinal&&zona!==ZONA_ORIGEN?' y marcarlos como destino final':'')+'?')) return;
         var nota=root.querySelector('#mover-nota-lote');
-        moverLote(S.trackSeleccion.slice(), zona, nota?nota.value.trim():'', S.trackMedio);
+        moverLote(S.trackSeleccion.slice(), zona, nota?nota.value.trim():'', S.trackMedio, S.trackFinal);
       });
     });
     each('[data-track-open]',function(b){
@@ -2669,13 +2817,16 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
     each('[data-medio]',function(b){
       b.addEventListener('click',function(){ S.trackMedio=b.getAttribute('data-medio'); render(); });
     });
+    each('[data-final-sw]',function(b){
+      b.addEventListener('click',function(){ S.trackFinal = b.getAttribute('data-final-sw')==='1'; render(); });
+    });
     each('[data-mover-zona-id]',function(b){
       b.addEventListener('click',function(){
         if(medios().length && !S.trackMedio){ toast('Selecciona el medio de transporte'); return; }
         var id=rolloId();
         var zona=b.getAttribute('data-mover-zona-id');
         var nota=root.querySelector('#mover-nota-id');
-        moverRollo(id, zona, nota?nota.value.trim():'', S.trackMedio);
+        moverRollo(id, zona, nota?nota.value.trim():'', S.trackMedio, S.trackFinal);
         resetCaptureFlow();
         render();
       });
@@ -2684,7 +2835,7 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
       b.addEventListener('click',function(){
         if(medios().length && !S.trackMedio){ toast('Selecciona el medio de transporte'); return; }
         var nota=root.querySelector('#mover-nota');
-        moverRollo(S.trackRollo, b.getAttribute('data-mover-zona'), nota?nota.value.trim():'', S.trackMedio);
+        moverRollo(S.trackRollo, b.getAttribute('data-mover-zona'), nota?nota.value.trim():'', S.trackMedio, S.trackFinal);
       });
     });
 
