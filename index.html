@@ -917,8 +917,6 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
     if(S.resultado==='Conforme') steps.push('confirmar');
     if(S.resultado==='Defecto' || S.resultado==='Scrap'){
       steps.push('defecto');
-      var v=currentDefectVariaciones();
-      if(v && v.length) steps.push('variacion');
       steps.push('evidencia');
     }
     return steps;
@@ -1024,7 +1022,6 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
       case 'resultado': return screenResultado();
       case 'familia':   return screenFamilia();
       case 'defecto':   return screenDefecto();
-      case 'variacion': return screenVariacion();
       case 'ubicacion': return screenUbicacion();
       case 'severidad': return screenSeveridad();
       case 'evidencia': return screenEvidencia();
@@ -1092,7 +1089,8 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
         '<div class="ra-existe-zona">'+escHtml(t.zona)+'</div>' +
         '<div class="ra-meta">Desde '+escHtml(t.ultimaFecha||'')+' '+escHtml(t.ultimaHora||'')+' · '+escHtml(t.ultimoUsuario||'')+
           (ultMov.medio?' · en '+escHtml(ultMov.medio):'')+'</div>' +
-        (det?'<div class="ra-meta" style="color:var(--defecto);font-weight:600;margin-top:4px;">Sin movimiento '+textoAntiguedad(t)+'</div>':'') +
+        (det?'<div class="ra-meta" style="color:var(--defecto);font-weight:600;margin-top:4px;">En '+escHtml(ZONA_ORIGEN)+' '+textoAntiguedad(t)+'</div>':'') +
+        (t.finalizado?'<div class="ra-meta" style="color:var(--conforme);font-weight:600;margin-top:4px;">✓ '+escHtml(textoFinal(t))+'</div>':'') +
         (ultimo && ultimo.defecto ? '<div class="ra-meta" style="margin-top:4px;">Último defecto: '+escHtml(ultimo.defectoCode+' '+ultimo.defecto)+(ultimo.variacion?' · '+escHtml(ultimo.variacion):'')+'</div>' : '') +
         '<div class="ra-meta" style="margin-top:4px;">'+previos+' inspección(es) · '+t.movimientos.length+' movimiento(s) · ' +
           '<button class="ra-link" data-track-open="'+escAttr(t.rolloId)+'" style="font-size:12.5px;padding:0;">Ver recorrido</button></div>' +
@@ -1203,16 +1201,9 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
     return backRow('resultado') + '<div class="ra-card"><div class="ra-h1">Selección de defecto</div><div class="ra-h2">Rollo '+escHtml(rolloId())+' · '+escHtml(etqResLarga(S.resultado))+'</div>'+items+'</div>';
   }
 
-  function screenVariacion(){
-    var items = (currentDefectVariaciones()||[]).map(function(v){
-      return '<div class="ra-choice" role="button" tabindex="0" data-variacion="'+escAttr(v)+'"><span class="ra-choice-text">'+escHtml(v)+'</span><span class="ra-chev">›</span></div>';
-    }).join('');
-    return backRow('defecto') + '<div class="ra-card"><div class="ra-h1">'+escHtml(S.defecto.name)+'</div><div class="ra-h2">Variación del defecto.</div>'+items+'</div>';
-  }
-
   function screenUbicacion(){
     var items = UBICACIONES.map(function(u){ return '<button class="ra-btn ra-btn-outline" data-ubicacion="'+escAttr(u)+'">'+escHtml(u)+'</button>'; }).join('');
-    return backRow(currentDefectVariaciones()?'variacion':'defecto') +
+    return backRow('defecto') +
       '<div class="ra-card"><div class="ra-h1">Ubicación del defecto</div><div class="ra-h2">¿Dónde está el defecto en el rollo?</div><div class="ra-grid">'+items+'</div></div>';
   }
 
@@ -1228,7 +1219,7 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
     var fotos = S.fotos.map(function(f,i){
       return '<div class="ra-photo-thumb"><img src="'+f+'" alt="Evidencia '+(i+1)+'"><button data-remove-foto="'+i+'" aria-label="Quitar foto">✕</button></div>';
     }).join('');
-    return backRow(currentDefectVariaciones()?'variacion':'defecto') +
+    return backRow('defecto') +
       '<div class="ra-card">' +
         '<div class="ra-h1">Evidencia y comentario</div>' +
         '<div class="ra-h2">Ambos campos son opcionales.</div>' +
@@ -1288,6 +1279,7 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
       return '<option value="'+escAttr(d.code)+'"'+(r.defectoCode===d.code?' selected':'')+'>'+escHtml(d.code+' — '+d.name)+'</option>';
     }).join('');
     var vars = S.variacionesCat[r.defectoCode]||[];
+    if(r.variacion && vars.indexOf(r.variacion)===-1) vars = [r.variacion].concat(vars);
     var varOpts = '<option value="">—</option>' + vars.map(function(v){ return '<option value="'+escAttr(v)+'"'+(r.variacion===v?' selected':'')+'>'+escHtml(v)+'</option>'; }).join('');
     var ediciones = (r.ediciones||[]).length;
 
@@ -1298,7 +1290,7 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
         (ediciones ? '<div class="ra-note">Este registro ya tiene '+ediciones+' modificación(es) previas. Puedes verlas en el reporte de movimientos.</div>' : '') +
         '<label class="ra-label">RESULTADO</label><select class="ra-input" id="edit-resultado">'+resOpts+'</select>' +
         '<label class="ra-label">DEFECTO</label><select class="ra-input" id="edit-defecto">'+defOpts+'</select>' +
-        '<label class="ra-label">VARIACIÓN</label><select class="ra-input" id="edit-variacion">'+varOpts+'</select>' +
+        (r.variacion ? '<label class="ra-label">VARIACIÓN (REGISTRO ANTERIOR)</label><select class="ra-input" id="edit-variacion">'+varOpts+'</select>' : '') +
         '<label class="ra-label">COMENTARIO</label><textarea class="ra-input" id="edit-comentario">'+escHtml(r.comentario||'')+'</textarea>' +
         '<div style="border-left:3px solid var(--defecto);background:#FDF6E9;padding:14px 15px;margin:6px 0 14px;">' +
           '<label class="ra-label" style="color:#6E4B10;">MOTIVO DEL CAMBIO (OBLIGATORIO)</label>' +
@@ -1313,8 +1305,15 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
   function horasSinMover(t){
     return (Date.now() - (t.ultimoTs||Date.now())) / 3600000;
   }
+  /* La alerta es solo para los rollos que siguen en la zona de contingencia:
+     ahí nacen todos y la idea es que salgan de ahí. Un rollo marcado como
+     "destino final" ya no alerta. */
   function estaDetenido(t){
-    return horasSinMover(t) >= HORAS_DETENIDO;
+    return t.zona===ZONA_ORIGEN && !t.finalizado && horasSinMover(t) >= HORAS_DETENIDO;
+  }
+  function textoFinal(t){
+    if(!t.finalizado) return '';
+    return 'En su destino final' + (t.finalizadoFecha?' desde '+t.finalizadoFecha:'') + (t.finalizadoPor?' · '+t.finalizadoPor:'');
   }
   function textoAntiguedad(t){
     var h = horasSinMover(t);
@@ -1334,8 +1333,10 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
     var q = S.trackFiltro.trim().toLowerCase();
     var todos = trackingList();
     var detenidos = todos.filter(estaDetenido);
+    var finalizados = todos.filter(function(t){ return t.finalizado; });
     var lista = todos.filter(function(t){
       if(S.trackZona==='Detenidos'){ if(!estaDetenido(t)) return false; }
+      else if(S.trackZona==='Finalizados'){ if(!t.finalizado) return false; }
       else if(S.trackZona!=='Todas' && t.zona!==S.trackZona) return false;
       if(!q) return true;
       return t.rolloId.toLowerCase().indexOf(q)!==-1;
@@ -1351,15 +1352,21 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
     }).join('');
     if(detenidos.length){
       chips += '<button class="ra-zchip alerta'+(S.trackZona==='Detenidos'?' on':'')+'" data-zona-filtro="Detenidos">' +
-        'Detenidos<b>'+detenidos.length+'</b></button>';
+        'Detenidos en contingencia<b>'+detenidos.length+'</b></button>';
+    }
+    if(finalizados.length){
+      chips += '<button class="ra-zchip'+(S.trackZona==='Finalizados'?' on':'')+'" data-zona-filtro="Finalizados">' +
+        'En destino final<b>'+finalizados.length+'</b></button>';
     }
 
     var aviso = (detenidos.length && S.trackZona!=='Detenidos')
-      ? '<div class="ra-warn">'+detenidos.length+' rollo(s) llevan más de '+HORAS_DETENIDO+' h sin movimiento. ' +
+      ? '<div class="ra-warn">'+detenidos.length+' rollo(s) llevan más de '+HORAS_DETENIDO+' h en '+ZONA_ORIGEN+' sin moverse. ' +
         '<button class="ra-link" id="btn-ver-detenidos" style="color:#6E4B10;">Ver cuáles</button></div>' : '';
 
     var vacioTxt = S.trackZona==='Detenidos'
-      ? 'No hay rollos detenidos. Todo se ha movido en las últimas '+HORAS_DETENIDO+' h.'
+      ? 'No hay rollos detenidos en '+ZONA_ORIGEN+'.'
+      : S.trackZona==='Finalizados'
+      ? 'Todavía no hay rollos marcados como destino final.'
       : (S.trackZona!=='Todas'
           ? 'No hay rollos en '+escHtml(S.trackZona)+(q?' que coincidan con la búsqueda.':'.')
           : (q ? 'Ningún rollo coincide con la búsqueda.' : ''));
@@ -1375,7 +1382,8 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
             (reg?'<span class="ra-badge '+cls+'">'+escHtml(etqRes(reg.resultado).toUpperCase())+'</span>':'')+'</div>' +
           '<div class="ra-meta"><b style="color:var(--info);">'+escHtml(t.zona)+'</b> · '+(t.movimientos.length)+' movimiento(s)</div>' +
           '<div class="ra-meta">Último: '+escHtml(t.ultimoUsuario||'')+' · '+escHtml(t.ultimaFecha||'')+' '+escHtml(t.ultimaHora||'')+(t.ultimoTurno?' · Turno '+escHtml(t.ultimoTurno):'')+'</div>' +
-          (det?'<div class="ra-meta" style="color:var(--defecto);font-weight:600;margin-top:4px;">Sin movimiento '+textoAntiguedad(t)+'</div>':'') +
+          (det?'<div class="ra-meta" style="color:var(--defecto);font-weight:600;margin-top:4px;">En '+escHtml(ZONA_ORIGEN)+' '+textoAntiguedad(t)+'</div>':'') +
+          (t.finalizado?'<div class="ra-meta" style="color:var(--conforme);font-weight:600;margin-top:4px;">✓ '+escHtml(textoFinal(t))+'</div>':'') +
           (S.trackModoSel?'':'<div class="ra-actions"><button class="ra-link" data-track-open="'+escAttr(t.rolloId)+'">Ver seguimiento</button></div>') +
         '</div>';
     }).join('') : (todos.length
@@ -1383,7 +1391,8 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
       : '<div class="ra-empty"><div class="big">◎</div>Aún no hay rollos en seguimiento.<br>Cada rollo entra automáticamente al capturarse.</div>');
 
     var titulo = S.trackZona==='Todas' ? 'Todos los rollos ('+lista.length+')'
-      : S.trackZona==='Detenidos' ? 'Detenidos · '+lista.length+' rollo(s)'
+      : S.trackZona==='Detenidos' ? 'Detenidos en '+ZONA_ORIGEN+' · '+lista.length+' rollo(s)'
+      : S.trackZona==='Finalizados' ? 'En destino final · '+lista.length+' rollo(s)'
       : S.trackZona+' · '+lista.length+' rollo(s)';
 
     var barraSel = '';
@@ -1406,7 +1415,10 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
                 medios().map(function(m){ return '<button class="ra-zchip'+(S.trackMedio===m?' on':'')+'" data-medio="'+escAttr(m)+'">'+escHtml(m)+'</button>'; }).join('') +
                 '</div>' : '') +
               '<input class="ra-input" id="mover-nota-lote" placeholder="Nota (opcional)" autocomplete="off">' +
-              '<label class="ra-label">MOVER TODOS A</label><div class="ra-grid">'+zonasDestino+'</div>'
+              '<label class="ra-label">MOVER TODOS A</label><div class="ra-grid">'+zonasDestino+'</div>' +
+              '<label class="ra-label" style="margin-top:14px;">O SIN MOVERLOS</label>' +
+              '<button class="ra-btn ra-btn-conforme ra-btn-block ra-btn-sm" id="btn-final-lote" style="margin-bottom:6px;">Marcar como destino final</button>' +
+              '<button class="ra-link" id="btn-quitar-final-lote">Quitar la marca de destino final</button>'
             : '<div class="ra-meta">Toca los rollos de la lista para seleccionarlos.</div>') +
         '</div>';
     }
@@ -1441,14 +1453,27 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
       return '<button class="ra-zchip'+(S.trackMedio===m?' on':'')+'" data-medio="'+escAttr(m)+'">'+escHtml(m)+'</button>';
     }).join('');
 
+    var cardFinal = t.finalizado
+      ? '<div class="ra-card" style="border-left:3px solid var(--conforme);">' +
+          '<div class="ra-label" style="color:var(--conforme);">DESTINO FINAL</div>' +
+          '<div class="ra-h2" style="margin-bottom:10px;">'+escHtml(textoFinal(t))+'. Este rollo ya no aparece en las alertas.</div>' +
+          '<button class="ra-link" id="btn-quitar-final">Quitar la marca de destino final</button>' +
+        '</div>'
+      : '<div class="ra-card">' +
+          '<div class="ra-h1" style="font-size:17px;">¿Ya llegó a su destino final?</div>' +
+          '<div class="ra-h2">Márcalo y dejará de contar para la alerta de rollos sin movimiento. Si después se vuelve a mover, la marca se quita sola.</div>' +
+          '<button class="ra-btn ra-btn-conforme ra-btn-block" id="btn-marcar-final" style="margin-bottom:0;">Marcar como destino final</button>' +
+        '</div>';
+
     return '<div class="ra-topbar"><button class="ra-back" id="btn-track-back">‹ Todos los rollos</button></div>' +
       '<div class="ra-card">' +
         '<div class="ra-h1" style="word-break:break-all;">'+escHtml(t.rolloId)+'</div>' +
         '<div class="ra-zona-actual"><div class="ra-label" style="color:var(--info);">UBICACIÓN ACTUAL</div><div class="z">'+escHtml(t.zona)+'</div>' +
           '<div class="ra-meta" style="margin-top:4px;">Desde '+escHtml(t.ultimaFecha||'')+' '+escHtml(t.ultimaHora||'')+(t.ultimoTurno?' · Turno '+escHtml(t.ultimoTurno):'')+' · '+escHtml(t.ultimoUsuario||'')+'</div></div>' +
+        (t.finalizado?'<div class="ra-meta" style="color:var(--conforme);font-weight:600;margin:-6px 0 12px;">✓ '+escHtml(textoFinal(t))+'</div>':'') +
         '<div class="ra-label">RECORRIDO</div>' +
         '<div class="ra-tl">'+tl+'</div>' +
-      '</div>' +
+      '</div>' + cardFinal +
       '<div class="ra-card">' +
         '<div class="ra-h1" style="font-size:17px;">Registrar movimiento</div>' +
         '<div class="ra-h2">Indica el medio de transporte y el destino. Quedará registrado con tu nombre y la hora.</div>' +
@@ -1464,7 +1489,9 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
 
   function camposTracking(t){
     return {rolloId:t.rolloId, zona:t.zona, ultimoUsuario:t.ultimoUsuario, ultimaFecha:t.ultimaFecha,
-            ultimaHora:t.ultimaHora, ultimoTurno:t.ultimoTurno, ultimoTs:t.ultimoTs};
+            ultimaHora:t.ultimaHora, ultimoTurno:t.ultimoTurno, ultimoTs:t.ultimoTs,
+            finalizado:!!t.finalizado, finalizadoTs:t.finalizadoTs||0,
+            finalizadoPor:t.finalizadoPor||'', finalizadoFecha:t.finalizadoFecha||''};
   }
   function nuevoMovimiento(zona, nota, medio, now){
     return {zona:zona, medio:medio||'', usuario:usuarioActual(), fecha:fechaHoy(now), hora:horaAhora(now),
@@ -1474,6 +1501,8 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
     t.movimientos.push(mov);
     t.zona=mov.zona; t.ultimoUsuario=mov.usuario; t.ultimaFecha=mov.fecha; t.ultimaHora=mov.hora;
     t.ultimoTurno=mov.turno; t.ultimoTs=mov.ts;
+    /* Si vuelve a moverse, deja de estar en su destino final */
+    t.finalizado=false; t.finalizadoTs=0; t.finalizadoPor=''; t.finalizadoFecha='';
     /* arrayUnion: si dos equipos mueven el mismo rollo sin señal, se conservan ambos movimientos */
     return Object.assign(camposTracking(t), {movimientos:arrayUnion(mov)});
   }
@@ -1502,6 +1531,29 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
     auditar('movimiento','('+ops.length+' rollos)','Movimiento en lote a '+zona+(medio?' en '+medio:'')+': '+ids.join(', '), nota||'');
     S.trackModoSel=false; S.trackSeleccion=[]; S.trackMedio='';
     toast(ops.length+' rollo(s) movidos a '+zona);
+    render();
+  }
+
+  /* Marca (o desmarca) rollos que ya llegaron a su destino final */
+  function marcarFinal(ids, valor){
+    var now=new Date(), ops=[], n=0;
+    ids.forEach(function(id){
+      var t=S.tracking[id];
+      if(!t || !!t.finalizado===valor) return;
+      t.finalizado=valor;
+      t.finalizadoTs=valor?now.getTime():0;
+      t.finalizadoPor=valor?usuarioActual():'';
+      t.finalizadoFecha=valor?fechaHoy(now):'';
+      ops.push({ref:ref(COL.tracking,id), merge:true, data:{finalizado:valor, finalizadoTs:t.finalizadoTs,
+        finalizadoPor:t.finalizadoPor, finalizadoFecha:t.finalizadoFecha}});
+      n++;
+    });
+    if(!n){ toast(valor?'Esos rollos ya estaban marcados':'No había marcas que quitar'); return; }
+    escribir(commitEnLotes(ops));
+    auditar('movimiento', n===1?ids[0]:'('+n+' rollos)',
+      valor?'Marcado como destino final':'Se quitó la marca de destino final', '');
+    toast(valor ? (n===1?'Marcado como destino final':n+' rollo(s) marcados') : 'Marca de destino final quitada');
+    S.trackModoSel=false; S.trackSeleccion=[];
     render();
   }
 
@@ -1677,7 +1729,7 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
       return out;
     }
     return out + reporteCard() + usersCard() + perfilesEquipoCard() + gradosCard() + defectosCard() + zonasCard() + mediosCard() +
-           simpleCatalogCard('enrolladores','Enrolladores') + variacionesCard() + demoCard();
+           simpleCatalogCard('enrolladores','Enrolladores') + demoCard();
   }
 
   function reporteCard(){
@@ -1870,26 +1922,6 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
     return '<div class="ra-card"><div class="ra-h1">'+title+'</div>' +
         '<div class="ra-tag-list">'+(tags||'<span style="font-size:12.5px;color:var(--ink-soft);">Vacío</span>')+'</div>' +
         '<div class="ra-inline-form" style="margin-bottom:0;"><input class="ra-input" id="new-'+kind+'" placeholder="Agregar" style="margin-bottom:0;" autocomplete="off"><button class="ra-small-btn" data-add-simple="'+kind+'">Agregar</button></div>' +
-      '</div>';
-  }
-
-  function variacionesCard(){
-    var v=S.variacionesCat;
-    var secciones = FAMILIAS.map(function(f){
-      var cuerpo = f.defectos.map(function(d){
-        var list=v[d.code]||[];
-        var tags=list.map(function(item,i){ return '<div class="ra-tag">'+escHtml(item)+'<button data-del-var="'+escAttr(d.code)+'" data-idx="'+i+'" aria-label="Quitar">✕</button></div>'; }).join('');
-        return '<div style="margin-bottom:18px;">' +
-            '<div style="font-size:13.5px;font-weight:700;margin-bottom:7px;">'+escHtml(d.code)+' — '+escHtml(d.name)+'</div>' +
-            '<div class="ra-tag-list">'+(tags||'<span style="font-size:12.5px;color:var(--ink-soft);">Sin variaciones — ese paso se omite</span>')+'</div>' +
-            '<div class="ra-inline-form" style="margin-bottom:0;"><input class="ra-input" placeholder="Nueva variación" data-var-input="'+escAttr(d.code)+'" style="margin-bottom:0;" autocomplete="off"><button class="ra-small-btn" data-add-var="'+escAttr(d.code)+'">Agregar</button></div>' +
-          '</div>';
-      }).join('');
-      return '<details><summary class="ra-section-title" style="cursor:pointer;">'+escHtml(f.name)+'</summary>'+cuerpo+'</details>';
-    }).join('');
-    return '<div class="ra-card">' +
-        '<div class="ra-h1">Variaciones por defecto</div>' +
-        '<div class="ra-h2">Si un defecto no tiene variaciones, ese paso se salta durante la captura.</div>' + secciones +
       '</div>';
   }
 
@@ -2106,6 +2138,7 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
           'Espesor (mm)':r.espesor||'','Ancho (mm)':r.ancho||'','Peso (kg)':r.peso||'',
           'Fecha producción':r.fechaProduccion||'','Enrollador':r.enrollador||'',
           'Zona actual':t?t.zona:'', 'Movimientos':t?t.movimientos.length:0,
+          'Destino final':t&&t.finalizado?'Sí':'No', 'Fecha destino final':t&&t.finalizado?(t.finalizadoFecha||''):'',
           'Modificaciones':(r.ediciones||[]).length,
           'Fotos (cantidad)':(r.fotos||[]).length,'Comentario':r.comentario||''
         };
@@ -2491,15 +2524,10 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
       function pick(){
         var code=b.getAttribute('data-defecto');
         S.defecto=S.familia.defectos.filter(function(d){ return d.code===code; })[0];
-        var v=currentDefectVariaciones();
         S.variacion=null;
-        S.step=(v && v.length)?'variacion':'evidencia'; render();
+        /* Tras elegir el defecto se pasa directo a evidencia y comentario */
+        S.step='evidencia'; render();
       }
-      b.addEventListener('click',pick);
-      b.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); pick(); } });
-    });
-    each('[data-variacion]',function(b){
-      function pick(){ S.variacion=b.getAttribute('data-variacion'); S.step='evidencia'; render(); }
       b.addEventListener('click',pick);
       b.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); pick(); } });
     });
@@ -2587,6 +2615,17 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
       n.addEventListener('blur',function(){ n.value=soloNumero(n.value).replace(/\.$/,''); });
     });
     on('#btn-ver-detenidos','click',function(){ S.trackZona='Detenidos'; S.tab='rollos'; render(); });
+    on('#btn-marcar-final','click',function(){ marcarFinal([S.trackRollo], true); });
+    on('#btn-quitar-final','click',function(){ marcarFinal([S.trackRollo], false); });
+    on('#btn-final-lote','click',function(){
+      var n=S.trackSeleccion.length;
+      if(!n) return;
+      if(!confirm('¿Marcar '+n+' rollo(s) como destino final? Dejarán de aparecer en las alertas.')) return;
+      marcarFinal(S.trackSeleccion.slice(), true);
+    });
+    on('#btn-quitar-final-lote','click',function(){
+      if(S.trackSeleccion.length) marcarFinal(S.trackSeleccion.slice(), false);
+    });
     on('#btn-sel-modo','click',function(){ S.trackModoSel=true; S.trackSeleccion=[]; render(); });
     on('#btn-sel-cancelar','click',function(){ S.trackModoSel=false; S.trackSeleccion=[]; render(); });
     on('#btn-sel-ninguno','click',function(){ S.trackSeleccion=[]; render(); });
@@ -2594,6 +2633,7 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
       var q=S.trackFiltro.trim().toLowerCase();
       S.trackSeleccion = trackingList().filter(function(t){
         if(S.trackZona==='Detenidos'){ if(!estaDetenido(t)) return false; }
+        else if(S.trackZona==='Finalizados'){ if(!t.finalizado) return false; }
         else if(S.trackZona!=='Todas' && t.zona!==S.trackZona) return false;
         return !q || t.rolloId.toLowerCase().indexOf(q)!==-1;
       }).map(function(t){ return t.rolloId; });
@@ -2954,28 +2994,6 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
         render();
       });
     });
-    each('[data-add-var]',function(b){
-      b.addEventListener('click',function(){
-        var code=b.getAttribute('data-add-var');
-        var input=root.querySelector('[data-var-input="'+(window.CSS&&CSS.escape?CSS.escape(code):code)+'"]');
-        var val=input?input.value.trim():'';
-        if(!val) return;
-        S.variacionesCat[code]=S.variacionesCat[code]||[];
-        S.variacionesCat[code].push(val);
-        try{ set('variaciones',S.variacionesCat); }catch(e){ toast('No se pudo guardar'); }
-        render();
-      });
-    });
-    each('[data-del-var]',function(b){
-      b.addEventListener('click',function(){
-        var code=b.getAttribute('data-del-var');
-        S.variacionesCat[code].splice(parseInt(b.getAttribute('data-idx'),10),1);
-        if(!S.variacionesCat[code].length) delete S.variacionesCat[code];
-        try{ set('variaciones',S.variacionesCat); }catch(e){}
-        render();
-      });
-    });
-
     on('#btn-demo','click',function(){ if(confirm('Se agregarán rollos de ejemplo a la base compartida (todos los equipos los verán). ¿Continuar?')) cargarDemo(); });
     on('#btn-wipe','click',function(){
       if(!confirm('Se borrarán en TODOS los equipos los registros, fotos, movimientos, auditoría y catálogos (vuelven a los valores iniciales). Las cuentas de usuario se conservan. ¿Continuar?')) return;
@@ -3086,7 +3104,7 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
       familia:fam?fam.name:'',
       defectoCode:def?def.code:'',
       defecto:def?def.name:'',
-      variacion:def?root.querySelector('#edit-variacion').value:'',
+      variacion:(function(){ var n=root.querySelector('#edit-variacion'); return (def && n) ? n.value : ''; })(),
       ubicacion:r.ubicacion||'',
       severidad:r.severidad||'',
       comentario:root.querySelector('#edit-comentario').value
